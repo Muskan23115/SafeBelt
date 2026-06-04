@@ -1,0 +1,96 @@
+@import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@300;400;500&family=Inter:wght@400;500;600&display=swap");
+
+@tailwind base;
+
+@layer base {
+  :root {
+    --color-ink:     41 37 36;     /* #292524 */
+    --color-success: 22 163 74;    /* #16a34a */
+    --color-error:   220 38 38;    /* #dc2626 */
+  }
+}
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  @apply bg-canvas text-ink font-body antialiased;
+  min-height: 100vh;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────────── */
+.display { @apply font-display font-light; }
+
+/* Caption — uppercase, tight tracking */
+.caption-upper {
+  @apply text-xs font-semibold uppercase tracking-widest;
+  letter-spacing: 0.096em;
+}
+
+/* ── Orbs ───────────────────────────────────────────────────────────────────── */
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary {
+  @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-pill bg-ink text-white font-body font-medium text-sm;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+.btn-primary:active { opacity: 1; transform: none; }
+
+.btn-secondary {
+  @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-pill border border-ink text-ink font-body font-medium text-sm bg-transparent;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.btn-secondary:hover { @apply bg-ink/5; transform: translateY(-1px); }
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card {
+  @apply bg-surface rounded-card border border-hairline p-6;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.22s ease, transform 0.22s ease;
+}
+.card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+/* ── Status badges ──────────────────────────────────────────────────────────── */
+.badge {
+  @apply caption-upper inline-flex items-center gap-1.5 px-3 py-1 rounded-pill;
+}
+.badge-success { @apply bg-success/10 text-success; }
+.badge-error   { @apply bg-error/10   text-error;   }
+.badge-neutral { @apply bg-stone-100   text-ink;     }
+
+/* ── Hairline divider ───────────────────────────────────────────────────────── */
+.divider { @apply border-t border-hairline; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-hairline rounded-full; }
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up 0.45s ease both; }
+
+@keyframes pulse-ring {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.12); }
+}
+.pulse-ring { animation: pulse-ring 2s ease-in-out infinite; }

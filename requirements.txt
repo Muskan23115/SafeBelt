@@ -1,0 +1,16 @@
+# ── Core ──────────────────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+sqlalchemy>=2.0.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+
+# ── Computer Vision ───────────────────────────────────────────────────────────
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+pillow>=10.0.0
+
+# ── ML / Detection ────────────────────────────────────────────────────────────
+ultralytics>=8.1.0          # YOLOv8  — auto-downloads yolov8n.pt on first run
+pupil-apriltags>=1.0.4      # AprilTag detector
+easyocr>=1.7.1              # OCR  — lazy-loaded in background thread
