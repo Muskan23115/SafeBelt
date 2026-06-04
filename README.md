@@ -1,4 +1,4 @@
-# SafeBelt AI 🛡️
+# SafeBelt 🛡️
 
 > Real-time seatbelt compliance monitoring — YOLOv8 · AprilTag · EasyOCR · FastAPI · React
 
