@@ -1,19 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import StreamView from "../components/StreamView";
+import PlateScanModal from "../components/PlateScanModal";
 
 export default function LiveMonitor() {
   const [stats, setStats] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+
+  // Cooldown ref — prevents modal re-opening for 30 s after dismiss
+  const cooldownUntil = useRef(0);
+  // Track last non-compliant state to detect a fresh violation trigger
+  const wasCompliant = useRef(true);
 
   useEffect(() => {
     const poll = async () => {
       try {
         const res = await fetch("/api/stats");
-        if (res.ok) setStats(await res.json());
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data);
+
+          const liveCompliant = data?.live?.compliant ?? true;
+
+          // Show modal on rising edge: compliant → violation, if cooldown passed
+          if (!liveCompliant && wasCompliant.current && Date.now() > cooldownUntil.current) {
+            setShowModal(true);
+          }
+          wasCompliant.current = liveCompliant;
+        }
       } catch { /* backend warming up */ }
     };
     poll();
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
+  }, []);
+
+  const handleModalClose = useCallback((_plate) => {
+    setShowModal(false);
+    // 30-second cooldown so the modal doesn't spam on every violation cycle
+    cooldownUntil.current = Date.now() + 30_000;
   }, []);
 
   const compliant   = stats ? stats.vehicles_scanned - stats.violations : 0;
@@ -23,6 +47,11 @@ export default function LiveMonitor() {
 
   return (
     <div className="relative overflow-hidden">
+      {/* ── Plate Scan Modal ──────────────────────────────────────────── */}
+      {showModal && (
+        <PlateScanModal onClose={handleModalClose} />
+      )}
+
       {/* ── Hero ───────────────────────────────────────────────────── */}
       <section className="relative pt-20 pb-14 px-6 md:px-12 text-center overflow-hidden">
         {/* Lavender orb */}
@@ -54,9 +83,9 @@ export default function LiveMonitor() {
       <section className="px-6 md:px-12 pb-8">
         <div className="max-w-4xl mx-auto grid grid-cols-3 gap-4">
           {[
-            { label: "Scanned",   value: stats?.vehicles_scanned ?? "—", color: "text-ink" },
-            { label: "Compliant", value: compliant,                        color: "text-success" },
-            { label: "Violations",value: violations,                       color: "text-error" },
+            { label: "Scanned",    value: stats?.vehicles_scanned ?? "—", color: "text-ink" },
+            { label: "Compliant",  value: compliant,                        color: "text-success" },
+            { label: "Violations", value: violations,                       color: "text-error" },
           ].map(({ label, value, color }) => (
             <div key={label} className="card text-center py-4 px-3">
               <p className={`font-display text-3xl ${color} font-light`}>{value}</p>
@@ -97,3 +126,4 @@ export default function LiveMonitor() {
     </div>
   );
 }
+

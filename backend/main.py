@@ -1,10 +1,11 @@
 """
 SafeBelt AI — FastAPI backend
 Endpoints:
-  GET  /api/stream           MJPEG live stream
-  GET  /api/violations       Paginated, filterable violation log
-  GET  /api/stats            Aggregate stats + violations/hour histogram
-  GET  /api/ocr_status       EasyOCR load state {ready, loading}
+  GET  /api/stream                MJPEG live stream
+  GET  /api/violations            Paginated, filterable violation log
+  POST /api/violations/manual     Log a manually-entered plate + vehicle lookup
+  GET  /api/stats                 Aggregate stats + violations/hour histogram
+  GET  /api/ocr_status            EasyOCR load state {ready, loading}
 """
 import asyncio
 import base64
@@ -14,7 +15,8 @@ import random
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -23,6 +25,7 @@ from .database import Base, engine, get_db
 from .models import Violation
 from . import ocr as _ocr
 from .detector import SeatbeltDetector, _rand_rj_plate
+from . import vehicle_lookup as _vl
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,17 +59,26 @@ def _on_violation(plate: str, thumbnail_jpg: Optional[bytes]):
     # Trigger lazy OCR load (no-op if already loading/loaded)
     _ocr.ensure_loaded()
 
+    # Call vehicle lookup API (returns VehicleInfo with None fields on error)
+    vehicle = _vl.lookup(plate)
+
     from .database import SessionLocal
     db = SessionLocal()
     try:
         thumb_b64 = base64.b64encode(thumbnail_jpg).decode() if thumbnail_jpg else None
         v = Violation(
-            plate         = plate,
-            timestamp     = datetime.utcnow(),
-            location      = LOCATION_NAME,
-            lat           = BASE_LAT + random.uniform(-GPS_JITTER, GPS_JITTER),
-            lon           = BASE_LON + random.uniform(-GPS_JITTER, GPS_JITTER),
-            thumbnail_b64 = thumb_b64,
+            plate              = plate,
+            timestamp          = datetime.utcnow(),
+            location           = LOCATION_NAME,
+            lat                = BASE_LAT + random.uniform(-GPS_JITTER, GPS_JITTER),
+            lon                = BASE_LON + random.uniform(-GPS_JITTER, GPS_JITTER),
+            thumbnail_b64      = thumb_b64,
+            vehicle_make_model = vehicle.make_model,
+            vehicle_color      = vehicle.color,
+            fuel_type          = vehicle.fuel_type,
+            owner_name         = vehicle.owner_name,
+            insurance_status   = vehicle.insurance_status,
+            puc_status         = vehicle.puc_status,
         )
         db.add(v)
         db.commit()
@@ -188,17 +200,88 @@ def get_violations(
         "page_size": page_size,
         "items": [
             {
-                "id":           v.id,
-                "plate":        v.plate,
-                "timestamp":    v.timestamp.isoformat() + "Z",
-                "location":     v.location,
-                "lat":          v.lat,
-                "lon":          v.lon,
-                "thumbnail_b64": v.thumbnail_b64,
+                "id":                v.id,
+                "plate":             v.plate,
+                "timestamp":         v.timestamp.isoformat() + "Z",
+                "location":          v.location,
+                "lat":               v.lat,
+                "lon":               v.lon,
+                "thumbnail_b64":     v.thumbnail_b64,
+                "vehicle_make_model": v.vehicle_make_model,
+                "vehicle_color":     v.vehicle_color,
+                "fuel_type":         v.fuel_type,
+                "owner_name":        v.owner_name,
+                "insurance_status":  v.insurance_status,
+                "puc_status":        v.puc_status,
             }
             for v in rows
         ],
     }
+
+
+# ── Manual plate entry ───────────────────────────────────────────────────────
+class ManualPlateRequest(BaseModel):
+    plate: str
+
+
+@app.post("/api/violations/manual")
+def log_manual_violation(
+    body: ManualPlateRequest,
+    db:   Session = Depends(get_db),
+):
+    """
+    Log a violation from a manually-entered plate number.
+    Runs vehicle lookup, saves to DB, returns the full violation object.
+    """
+    plate = body.plate.strip().upper()
+    if not plate:
+        raise HTTPException(status_code=422, detail="plate must not be empty")
+
+    # Vehicle lookup (gracefully returns empty VehicleInfo on any error)
+    vehicle = _vl.lookup(plate)
+
+    from .database import SessionLocal
+    db_local = SessionLocal()
+    try:
+        v = Violation(
+            plate              = plate,
+            timestamp          = datetime.utcnow(),
+            location           = LOCATION_NAME,
+            lat                = BASE_LAT + random.uniform(-GPS_JITTER, GPS_JITTER),
+            lon                = BASE_LON + random.uniform(-GPS_JITTER, GPS_JITTER),
+            thumbnail_b64      = None,
+            vehicle_make_model = vehicle.make_model,
+            vehicle_color      = vehicle.color,
+            fuel_type          = vehicle.fuel_type,
+            owner_name         = vehicle.owner_name,
+            insurance_status   = vehicle.insurance_status,
+            puc_status         = vehicle.puc_status,
+        )
+        db_local.add(v)
+        db_local.commit()
+        db_local.refresh(v)
+        logger.info("Manual violation logged: %s", plate)
+        return {
+            "id":                v.id,
+            "plate":             v.plate,
+            "timestamp":         v.timestamp.isoformat() + "Z",
+            "location":          v.location,
+            "lat":               v.lat,
+            "lon":               v.lon,
+            "thumbnail_b64":     v.thumbnail_b64,
+            "vehicle_make_model": v.vehicle_make_model,
+            "vehicle_color":     v.vehicle_color,
+            "fuel_type":         v.fuel_type,
+            "owner_name":        v.owner_name,
+            "insurance_status":  v.insurance_status,
+            "puc_status":        v.puc_status,
+        }
+    except Exception as exc:
+        logger.error("Manual violation DB error: %s", exc)
+        db_local.rollback()
+        raise HTTPException(status_code=500, detail="Failed to save violation")
+    finally:
+        db_local.close()
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
